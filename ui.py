@@ -159,6 +159,8 @@ def _show_squat_phase(root, result, target_squats):
     )
     esc_hint.pack(pady=10)
 
+    read_failures = [0]  # Using list for closure mutability
+
     def update_frame():
         if not root.winfo_exists():
             cap.release()
@@ -168,38 +170,52 @@ def _show_squat_phase(root, result, target_squats):
             return
 
         ret, frame = cap.read()
-        if ret:
-            frame = cv2.flip(frame, 1)  # Mirror
-            frame, count, label, person_visible = detector.process_frame(frame)
-
-            # Convert to Tkinter image
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(rgb)
-            img = img.resize((640, 480), Image.LANCZOS)
-            imgtk = ImageTk.PhotoImage(image=img)
-            cam_label.imgtk = imgtk
-            cam_label.configure(image=imgtk)
-
-            count_label.configure(text=f"{count} / {target_squats}")
-            status_label.configure(text=label)
-
-            # Update progress bar
-            progress_canvas.delete("all")
-            bar_width = int(300 * count / target_squats)
-            progress_canvas.create_rectangle(
-                0, 0, bar_width, 30, fill="#e94560", outline=""
-            )
-
-            if detector.is_complete():
-                status_label.configure(text="太棒了！", fg="#4ecca3")
-                count_label.configure(fg="#4ecca3")
-                cap.release()
-                detector.release()
-                result["_cap"] = None
-                result["_detector"] = None
-                result["completed"] = True
-                root.after(2000, root.destroy)
+        if not ret:
+            read_failures[0] += 1
+            if read_failures[0] > 30:
+                status_label.configure(text="摄像头读取失败，请按 Esc 退出", fg="#e94560")
+                cam_label.configure(text="摄像头无法读取画面", font=("Helvetica", 24), fg="#888")
                 return
+            root.after(30, update_frame)
+            return
+        read_failures[0] = 0
+
+        frame = cv2.flip(frame, 1)  # Mirror
+        frame, count, label, person_visible = detector.process_frame(frame)
+
+        # Convert to Tkinter image
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(rgb)
+        img = img.resize((640, 480), Image.LANCZOS)
+        imgtk = ImageTk.PhotoImage(image=img)
+        cam_label.imgtk = imgtk
+        cam_label.configure(image=imgtk)
+
+        count_label.configure(text=f"{count} / {target_squats}")
+        status_label.configure(text=label)
+
+        # Update progress bar
+        progress_canvas.delete("all")
+        bar_width = int(300 * count / target_squats)
+        progress_canvas.create_rectangle(
+            0, 0, bar_width, 30, fill="#e94560", outline=""
+        )
+
+        if detector.is_complete():
+            status_label.configure(text="太棒了！", fg="#4ecca3")
+            count_label.configure(fg="#4ecca3")
+            cap.release()
+            detector.release()
+            result["_cap"] = None
+            result["_detector"] = None
+            result["completed"] = True
+
+            def _safe_destroy():
+                if root.winfo_exists():
+                    root.destroy()
+
+            root.after(2000, _safe_destroy)
+            return
 
         root.after(30, update_frame)
 

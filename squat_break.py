@@ -1,9 +1,19 @@
 """Squat Break - 久坐蹲起提醒工具 - 主入口"""
 import argparse
+import os
 import sys
 import time
 
+# Ensure squat-break directory is in path for sibling imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from Quartz import CGSessionCopyCurrentDictionary
+
+try:
+    from ui import show_break_ui
+except Exception as e:
+    print(f"Warning: could not import ui module: {e}")
+    show_break_ui = None
 
 
 def is_screen_active():
@@ -43,13 +53,12 @@ def main():
                 remaining = interval_seconds - accumulated
                 if remaining <= 0:
                     print("\n时间到！起来做蹲起！")
-                    from ui import show_break_ui
-
-                    show_break_ui()
+                    if show_break_ui is not None:
+                        show_break_ui()
+                    else:
+                        print("UI 模块不可用，跳过蹲起提醒。")
                     accumulated = 0.0
                     print("计时器已重置，继续工作吧！")
-            else:
-                pass
 
             time.sleep(poll_interval)
     except KeyboardInterrupt:
