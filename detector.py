@@ -77,7 +77,7 @@ class SquatDetector:
     def process_frame(self, frame):
         """Process a BGR OpenCV frame.
 
-        Returns (frame, count, label, person_visible).
+        Returns (frame, count, label, person_visible, distance).
         """
         import cv2
         import numpy as np
@@ -91,11 +91,10 @@ class SquatDetector:
         h, w = frame.shape[:2]
         label = "请站到摄像头前"
         person_visible = False
+        distance = 0.0
 
         if results.pose_landmarks and len(results.pose_landmarks) > 0:
             lm = results.pose_landmarks[0]
-            # MediaPipe Pose landmark indices:
-            # 23=left_hip, 24=right_hip, 25=left_knee, 26=right_knee
             left_hip = lm[23]
             right_hip = lm[24]
             left_knee = lm[25]
@@ -104,6 +103,7 @@ class SquatDetector:
             person_visible = True
             hip_y = (left_hip.y + right_hip.y) / 2
             knee_y = (left_knee.y + right_knee.y) / 2
+            distance = knee_y - hip_y
             self.process(hip_y, knee_y)
 
             if self.is_complete():
@@ -118,7 +118,7 @@ class SquatDetector:
                 py = int(lm[idx].y * h)
                 cv2.circle(frame, (px, py), 8, (0, 255, 0), -1)
 
-        return frame, self.count, label, person_visible
+        return frame, self.count, label, person_visible, distance
 
     def release(self):
         if self._pose is not None:

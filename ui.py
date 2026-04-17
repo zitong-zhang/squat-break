@@ -1,4 +1,7 @@
 """Squat Break - 久坐蹲起提醒工具 - 全屏 UI"""
+import os
+import subprocess
+
 import cv2
 import tkinter as tk
 from PIL import Image, ImageTk
@@ -6,9 +9,21 @@ from PIL import Image, ImageTk
 from detector import SquatDetector
 
 
+def _force_foreground():
+    """Bring the Python process to the foreground on macOS."""
+    try:
+        pid = os.getpid()
+        subprocess.Popen([
+            'osascript', '-e',
+            f'tell application "System Events" to set frontmost of first process whose unix id is {pid} to true'
+        ])
+    except Exception:
+        pass
+
+
 def show_break_ui(target_squats=10):
     """Show fullscreen break UI. Returns when user completes squats or presses Esc."""
-    result = {"completed": False}
+    result = {"completed": False, "_done": False}
 
     root = tk.Tk()
     root.title("Squat Break")
@@ -24,24 +39,23 @@ def show_break_ui(target_squats=10):
 
     root.bind("<Escape>", lambda e: _on_escape(root, result))
 
-    # Activate window on macOS
+    # Phase 1: Reminder
+    _show_reminder(root, result, target_squats)
+
+    # Force foreground AFTER widgets are created
     root.update_idletasks()
     root.lift()
     root.focus_force()
-    try:
-        from AppKit import NSApp
-        NSApp.activateIgnoringOtherApps_(True)
-    except Exception:
-        pass
-
-    # Phase 1: Reminder
-    _show_reminder(root, result, target_squats)
+    _force_foreground()
 
     root.mainloop()
     return result["completed"]
 
 
 def _on_escape(root, result):
+    if result.get("_done"):
+        return
+    result["_done"] = True
     if "_cap" in result and result["_cap"] is not None:
         result["_cap"].release()
         result["_cap"] = None
@@ -50,7 +64,6 @@ def _on_escape(root, result):
         result["_detector"] = None
     result["completed"] = False
     root.quit()
-    root.destroy()
 
 
 def _show_reminder(root, result, target_squats):
@@ -108,7 +121,6 @@ def _show_squat_phase(root, result, target_squats):
 
     root.configure(bg="#0f0f1a")
 
-    # Open camera with explicit AVFoundation backend (required on macOS)
     cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -117,42 +129,17 @@ def _show_squat_phase(root, result, target_squats):
         error_frame.place(relx=0.5, rely=0.5, anchor="center")
         tk.Label(
             error_frame,
-            text="无法访问摄像头",
-            font=("Helvetica", 36, "bold"),
+            text="无法访问摄像头\n按 Esc 退出",
+            font=("Helvetica", 32),
             fg="#e94560",
             bg="#0f0f1a",
         ).pack(pady=10)
-        tk.Label(
-            error_frame,
-            text="请检查：",
-            font=("Helvetica", 20),
-            fg="#eee",
-            bg="#0f0f1a",
-        ).pack(pady=5)
-        tk.Label(
-            error_frame,
-            text="1. 系统设置 → 隐私与安全性 → 摄像头\n   开启你的终端应用的摄像头权限\n2. 重启终端后重试",
-            font=("Helvetica", 18),
-            fg="#aaa",
-            bg="#0f0f1a",
-            justify="left",
-        ).pack(pady=10)
-        tk.Label(
-            error_frame,
-            text="按 Esc 退出",
-            font=("Helvetica", 14),
-            fg="#555",
-            bg="#0f0f1a",
-        ).pack(pady=20)
         return
 
     detector = SquatDetector(target=target_squats, min_hold_frames=5)
-
-    # Store references so _on_escape can release them
     result["_cap"] = cap
     result["_detector"] = detector
 
-    # Layout: camera left, info right
     container = tk.Frame(root, bg="#0f0f1a")
     container.place(relx=0.5, rely=0.5, anchor="center")
 
@@ -171,7 +158,6 @@ def _show_squat_phase(root, result, target_squats):
     )
     count_label.pack(pady=20)
 
-    # Progress bar
     progress_canvas = tk.Canvas(
         info_frame, width=300, height=30, bg="#222", highlightthickness=0
     )
@@ -186,6 +172,15 @@ def _show_squat_phase(root, result, target_squats):
     )
     status_label.pack(pady=20)
 
+    debug_label = tk.Label(
+        info_frame,
+        text="",
+        font=("Helvetica", 12),
+        fg="#555",
+        bg="#0f0f1a",
+    )
+    debug_label.pack(pady=5)
+
     esc_hint = tk.Label(
         info_frame,
         text="按 Esc 跳过",
@@ -195,14 +190,10 @@ def _show_squat_phase(root, result, target_squats):
     )
     esc_hint.pack(pady=10)
 
-    read_failures = [0]  # Using list for closure mutability
+    read_failures = [0]
 
     def update_frame():
-        if not root.winfo_exists():
-            cap.release()
-            detector.release()
-            result["_cap"] = None
-            result["_detector"] = None
+        if result.get("_done") or not root.winfo_exists():
             return
 
         ret, frame = cap.read()
@@ -210,16 +201,14 @@ def _show_squat_phase(root, result, target_squats):
             read_failures[0] += 1
             if read_failures[0] > 30:
                 status_label.configure(text="摄像头读取失败，请按 Esc 退出", fg="#e94560")
-                cam_label.configure(text="摄像头无法读取画面", font=("Helvetica", 24), fg="#888")
                 return
             root.after(100, update_frame)
             return
         read_failures[0] = 0
 
-        frame = cv2.flip(frame, 1)  # Mirror
-        frame, count, label, person_visible = detector.process_frame(frame)
+        frame = cv2.flip(frame, 1)
+        frame, count, label, person_visible, distance = detector.process_frame(frame)
 
-        # Convert to Tkinter image
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(rgb)
         imgtk = ImageTk.PhotoImage(image=img)
@@ -228,8 +217,8 @@ def _show_squat_phase(root, result, target_squats):
 
         count_label.configure(text=f"{count} / {target_squats}")
         status_label.configure(text=label)
+        debug_label.configure(text=f"dist: {distance:.3f}  state: {detector.state}")
 
-        # Update progress bar
         progress_canvas.delete("all")
         bar_width = int(300 * count / target_squats)
         progress_canvas.create_rectangle(
@@ -237,6 +226,7 @@ def _show_squat_phase(root, result, target_squats):
         )
 
         if detector.is_complete():
+            result["_done"] = True
             status_label.configure(text="太棒了！", fg="#4ecca3")
             count_label.configure(fg="#4ecca3")
             cap.release()
@@ -248,7 +238,6 @@ def _show_squat_phase(root, result, target_squats):
             def _safe_destroy():
                 if root.winfo_exists():
                     root.quit()
-                    root.destroy()
 
             root.after(2000, _safe_destroy)
             return
