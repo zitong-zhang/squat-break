@@ -12,18 +12,20 @@ def show_break_ui(target_squats=10):
 
     root = tk.Tk()
     root.title("Squat Break")
-    root.attributes("-fullscreen", True)
-    root.attributes("-topmost", True)
-    root.configure(bg="#1a1a2e")
-    root.bind("<Escape>", lambda e: _on_escape(root, result))
+    root.configure(bg="#1a1a2e", cursor="none")
 
-    # Try to steal focus on macOS
-    try:
-        from AppKit import NSApp, NSApplication, NSApplicationActivationPolicyAccessory
-        NSApp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
-        NSApp.activateIgnoringOtherApps_(True)
-    except Exception:
-        pass
+    # Use overrideredirect + manual geometry instead of -fullscreen
+    # to avoid macOS native fullscreen space issues
+    root.overrideredirect(True)
+    root.attributes("-topmost", True)
+
+    # Cover the entire screen
+    screen_w = root.winfo_screenwidth()
+    screen_h = root.winfo_screenheight()
+    root.geometry(f"{screen_w}x{screen_h}+0+0")
+
+    root.bind("<Escape>", lambda e: _on_escape(root, result))
+    root.focus_force()
 
     # Phase 1: Reminder
     _show_reminder(root, result, target_squats)
