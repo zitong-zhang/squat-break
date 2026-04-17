@@ -12,15 +12,8 @@ from PIL import Image, ImageTk
 from detector import SquatDetector
 
 
-def _activate_app():
-    """Register as a regular macOS app and steal focus."""
-    try:
-        from AppKit import NSApplication
-        app = NSApplication.sharedApplication()
-        app.setActivationPolicy_(0)  # Regular app - shows in dock
-        app.activateIgnoringOtherApps_(True)
-    except Exception:
-        pass
+def _activate_and_notify():
+    """Send notification and steal focus using osascript (no NSApplication conflict with Tk)."""
     try:
         subprocess.run([
             'osascript', '-e',
@@ -33,8 +26,7 @@ def _activate_app():
 def main():
     target_squats = int(sys.argv[1]) if len(sys.argv) > 1 else 10
 
-    # Register as macOS app BEFORE creating window
-    _activate_app()
+    _activate_and_notify()
 
     result = {"completed": False, "_done": False}
 
@@ -52,10 +44,13 @@ def main():
 
     _show_reminder(root, result, target_squats)
 
-    # Force foreground
+    # Force foreground: repeated lift + focus to overcome macOS resistance
     root.update_idletasks()
+    root.lower()
     root.lift()
     root.focus_force()
+    root.after(500, lambda: (root.lift(), root.focus_force()))
+    root.after(1500, lambda: (root.lift(), root.focus_force()))
 
     root.mainloop()
 
