@@ -101,13 +101,37 @@ def _show_squat_phase(root, result, target_squats):
     # Open camera
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
+        error_frame = tk.Frame(root, bg="#0f0f1a")
+        error_frame.place(relx=0.5, rely=0.5, anchor="center")
         tk.Label(
-            root,
-            text="无法访问摄像头\n按 Esc 退出",
-            font=("Helvetica", 32),
+            error_frame,
+            text="无法访问摄像头",
+            font=("Helvetica", 36, "bold"),
             fg="#e94560",
             bg="#0f0f1a",
-        ).place(relx=0.5, rely=0.5, anchor="center")
+        ).pack(pady=10)
+        tk.Label(
+            error_frame,
+            text="请检查：",
+            font=("Helvetica", 20),
+            fg="#eee",
+            bg="#0f0f1a",
+        ).pack(pady=5)
+        tk.Label(
+            error_frame,
+            text="1. 系统设置 → 隐私与安全性 → 摄像头\n   开启你的终端应用的摄像头权限\n2. 重启终端后重试",
+            font=("Helvetica", 18),
+            fg="#aaa",
+            bg="#0f0f1a",
+            justify="left",
+        ).pack(pady=10)
+        tk.Label(
+            error_frame,
+            text="按 Esc 退出",
+            font=("Helvetica", 14),
+            fg="#555",
+            bg="#0f0f1a",
+        ).pack(pady=20)
         return
 
     detector = SquatDetector(target=target_squats, min_hold_frames=5)
