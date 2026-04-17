@@ -44,13 +44,25 @@ def main():
 
     _show_reminder(root, result, target_squats)
 
-    # Force foreground: repeated lift + focus to overcome macOS resistance
+    # Force foreground using osascript by PID - most reliable on macOS
+    pid = os.getpid()
+    def steal_focus():
+        try:
+            subprocess.run([
+                'osascript', '-e',
+                f'tell application "System Events" to set frontmost of first process whose unix id is {pid} to true'
+            ], timeout=3)
+        except Exception:
+            pass
+        if root.winfo_exists():
+            root.lift()
+            root.focus_force()
+
     root.update_idletasks()
-    root.lower()
-    root.lift()
-    root.focus_force()
-    root.after(500, lambda: (root.lift(), root.focus_force()))
-    root.after(1500, lambda: (root.lift(), root.focus_force()))
+    steal_focus()
+    root.after(500, steal_focus)
+    root.after(1500, steal_focus)
+    root.after(3000, steal_focus)
 
     root.mainloop()
 
