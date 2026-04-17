@@ -33,6 +33,12 @@ def show_break_ui(target_squats=10):
 
 
 def _on_escape(root, result):
+    if "_cap" in result and result["_cap"] is not None:
+        result["_cap"].release()
+        result["_cap"] = None
+    if "_detector" in result and result["_detector"] is not None:
+        result["_detector"].release()
+        result["_detector"] = None
     result["completed"] = False
     root.destroy()
 
@@ -106,6 +112,10 @@ def _show_squat_phase(root, result, target_squats):
 
     detector = SquatDetector(target=target_squats, min_hold_frames=5)
 
+    # Store references so _on_escape can release them
+    result["_cap"] = cap
+    result["_detector"] = detector
+
     # Layout: camera left, info right
     container = tk.Frame(root, bg="#0f0f1a")
     container.place(relx=0.5, rely=0.5, anchor="center")
@@ -153,6 +163,8 @@ def _show_squat_phase(root, result, target_squats):
         if not root.winfo_exists():
             cap.release()
             detector.release()
+            result["_cap"] = None
+            result["_detector"] = None
             return
 
         ret, frame = cap.read()
@@ -183,6 +195,8 @@ def _show_squat_phase(root, result, target_squats):
                 count_label.configure(fg="#4ecca3")
                 cap.release()
                 detector.release()
+                result["_cap"] = None
+                result["_detector"] = None
                 result["completed"] = True
                 root.after(2000, root.destroy)
                 return
