@@ -1,11 +1,25 @@
 """Squat Break - 久坐蹲起提醒工具 - 蹲起检测模块"""
+import math
+
+
+def _angle(a, b, c):
+    """Calculate angle at point b formed by points a-b-c (in degrees)."""
+    ba = (a[0] - b[0], a[1] - b[1])
+    bc = (c[0] - b[0], c[1] - b[1])
+    dot = ba[0] * bc[0] + ba[1] * bc[1]
+    mag_ba = math.sqrt(ba[0] ** 2 + ba[1] ** 2)
+    mag_bc = math.sqrt(bc[0] ** 2 + bc[1] ** 2)
+    if mag_ba * mag_bc == 0:
+        return 0
+    cos_angle = max(-1, min(1, dot / (mag_ba * mag_bc)))
+    return math.degrees(math.acos(cos_angle))
 
 
 class SquatDetector:
-    """State machine for counting squats based on hip/knee Y coordinates.
+    """State machine for counting squats based on knee angle.
 
-    Coordinates are normalized (0-1, Y increases downward).
     A squat is: STANDING -> DOWN (held >= min_hold_frames) -> STANDING.
+    Standing: knee angle ~170-180°. Squatting: knee angle ~90-120°.
     """
 
     STANDING = "standing"
@@ -18,17 +32,17 @@ class SquatDetector:
         self.state = self.STANDING
         self._hold_frames = 0
         self._was_valid_down = False
-        # Calibrated for PoseLandmarker: standing dist≈0.65, squat dist≈0.30
-        self._stand_threshold = 0.50
-        self._squat_threshold = 0.35
+        self._stand_threshold = 155  # above this = standing
+        self._squat_threshold = 130  # below this = squatting
         self._pose = None
+        self._last_angle = 0.0
 
-    def process(self, hip_y, knee_y):
-        """Update state from hip and knee Y coordinates."""
-        distance = knee_y - hip_y
+    def process(self, knee_angle):
+        """Update state from knee angle in degrees."""
+        self._last_angle = knee_angle
 
         if self.state == self.STANDING:
-            if distance < self._squat_threshold:
+            if knee_angle < self._squat_threshold:
                 self._hold_frames += 1
                 if self._hold_frames >= self.min_hold_frames:
                     self.state = self.DOWN
@@ -37,7 +51,7 @@ class SquatDetector:
                 self._hold_frames = 0
 
         elif self.state == self.DOWN:
-            if distance > self._stand_threshold:
+            if knee_angle > self._stand_threshold:
                 if self._was_valid_down:
                     self.count += 1
                     self._was_valid_down = False
@@ -77,7 +91,7 @@ class SquatDetector:
     def process_frame(self, frame):
         """Process a BGR OpenCV frame.
 
-        Returns (frame, count, label, person_visible, distance).
+        Returns (frame, count, label, person_visible, angle).
         """
         import cv2
         import numpy as np
@@ -91,20 +105,17 @@ class SquatDetector:
         h, w = frame.shape[:2]
         label = "请站到摄像头前"
         person_visible = False
-        distance = 0.0
+        angle = self._last_angle
 
         if results.pose_landmarks and len(results.pose_landmarks) > 0:
             lm = results.pose_landmarks[0]
-            left_hip = lm[23]
-            right_hip = lm[24]
-            left_knee = lm[25]
-            right_knee = lm[26]
+            hip = ((lm[23].x + lm[24].x) / 2, (lm[23].y + lm[24].y) / 2)
+            knee = ((lm[25].x + lm[26].x) / 2, (lm[25].y + lm[26].y) / 2)
+            ankle = ((lm[27].x + lm[28].x) / 2, (lm[27].y + lm[28].y) / 2)
 
             person_visible = True
-            hip_y = (left_hip.y + right_hip.y) / 2
-            knee_y = (left_knee.y + right_knee.y) / 2
-            distance = knee_y - hip_y
-            self.process(hip_y, knee_y)
+            angle = _angle(hip, knee, ankle)
+            self.process(angle)
 
             if self.is_complete():
                 label = f"太棒了！ {self.count}/{self.target}"
@@ -113,12 +124,12 @@ class SquatDetector:
             else:
                 label = f"蹲下去！ ({self.count}/{self.target})"
 
-            for idx in [23, 24, 25, 26]:
+            for idx in [23, 24, 25, 26, 27, 28]:
                 px = int(lm[idx].x * w)
                 py = int(lm[idx].y * h)
                 cv2.circle(frame, (px, py), 8, (0, 255, 0), -1)
 
-        return frame, self.count, label, person_visible, distance
+        return frame, self.count, label, person_visible, angle
 
     def release(self):
         if self._pose is not None:
