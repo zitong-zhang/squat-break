@@ -100,6 +100,8 @@ def _show_squat_phase(root, result, target_squats):
 
     # Open camera with explicit AVFoundation backend (required on macOS)
     cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     if not cap.isOpened():
         error_frame = tk.Frame(root, bg="#0f0f1a")
         error_frame.place(relx=0.5, rely=0.5, anchor="center")
@@ -200,7 +202,7 @@ def _show_squat_phase(root, result, target_squats):
                 status_label.configure(text="摄像头读取失败，请按 Esc 退出", fg="#e94560")
                 cam_label.configure(text="摄像头无法读取画面", font=("Helvetica", 24), fg="#888")
                 return
-            root.after(30, update_frame)
+            root.after(100, update_frame)
             return
         read_failures[0] = 0
 
@@ -210,7 +212,6 @@ def _show_squat_phase(root, result, target_squats):
         # Convert to Tkinter image
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(rgb)
-        img = img.resize((640, 480), Image.LANCZOS)
         imgtk = ImageTk.PhotoImage(image=img)
         cam_label.imgtk = imgtk
         cam_label.configure(image=imgtk)
@@ -241,6 +242,6 @@ def _show_squat_phase(root, result, target_squats):
             root.after(2000, _safe_destroy)
             return
 
-        root.after(30, update_frame)
+        root.after(100, update_frame)
 
     root.after(1000, update_frame)
