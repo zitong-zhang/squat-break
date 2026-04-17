@@ -18,8 +18,9 @@ class SquatDetector:
         self.state = self.STANDING
         self._hold_frames = 0
         self._was_valid_down = False
-        self._stand_threshold = 0.12
-        self._squat_threshold = 0.07
+        # Calibrated for PoseLandmarker: standing dist≈0.65, squat dist≈0.30
+        self._stand_threshold = 0.50
+        self._squat_threshold = 0.35
         self._pose = None
 
     def process(self, hip_y, knee_y):

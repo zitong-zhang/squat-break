@@ -12,20 +12,27 @@ def show_break_ui(target_squats=10):
 
     root = tk.Tk()
     root.title("Squat Break")
-    root.configure(bg="#1a1a2e", cursor="none")
+    root.configure(bg="#1a1a2e")
 
-    # Use overrideredirect + manual geometry instead of -fullscreen
-    # to avoid macOS native fullscreen space issues
+    # Cover the entire screen without window decorations
     root.overrideredirect(True)
     root.attributes("-topmost", True)
 
-    # Cover the entire screen
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
     root.geometry(f"{screen_w}x{screen_h}+0+0")
 
     root.bind("<Escape>", lambda e: _on_escape(root, result))
+
+    # Activate window on macOS
+    root.update_idletasks()
+    root.lift()
     root.focus_force()
+    try:
+        from AppKit import NSApp
+        NSApp.activateIgnoringOtherApps_(True)
+    except Exception:
+        pass
 
     # Phase 1: Reminder
     _show_reminder(root, result, target_squats)
@@ -42,6 +49,7 @@ def _on_escape(root, result):
         result["_detector"].release()
         result["_detector"] = None
     result["completed"] = False
+    root.quit()
     root.destroy()
 
 
@@ -239,6 +247,7 @@ def _show_squat_phase(root, result, target_squats):
 
             def _safe_destroy():
                 if root.winfo_exists():
+                    root.quit()
                     root.destroy()
 
             root.after(2000, _safe_destroy)
