@@ -12,8 +12,29 @@ from PIL import Image, ImageTk
 from detector import SquatDetector
 
 
+def _activate_app():
+    """Register as a regular macOS app and steal focus."""
+    try:
+        from AppKit import NSApplication
+        app = NSApplication.sharedApplication()
+        app.setActivationPolicy_(0)  # Regular app - shows in dock
+        app.activateIgnoringOtherApps_(True)
+    except Exception:
+        pass
+    try:
+        subprocess.run([
+            'osascript', '-e',
+            'display notification "起来做蹲起！" with title "Squat Break" sound name "default"'
+        ], timeout=3)
+    except Exception:
+        pass
+
+
 def main():
     target_squats = int(sys.argv[1]) if len(sys.argv) > 1 else 10
+
+    # Register as macOS app BEFORE creating window
+    _activate_app()
 
     result = {"completed": False, "_done": False}
 
@@ -35,18 +56,9 @@ def main():
     root.update_idletasks()
     root.lift()
     root.focus_force()
-    try:
-        pid = os.getpid()
-        subprocess.Popen([
-            'osascript', '-e',
-            f'tell application "System Events" to set frontmost of first process whose unix id is {pid} to true'
-        ])
-    except Exception:
-        pass
 
     root.mainloop()
 
-    # Exit with code based on result
     sys.exit(0 if result["completed"] else 1)
 
 
