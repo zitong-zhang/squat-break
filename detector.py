@@ -28,10 +28,13 @@ class SquatDetector:
         self._pose = None
 
     def process(self, hip_y):
-        """Update state from hip Y coordinate."""
-        self._last_hip_y = hip_y
+        """Update state. hip_y=None means hips not visible (person crouched out of frame)."""
+        if hip_y is not None:
+            self._last_hip_y = hip_y
 
         if self.state == self.CALIBRATING:
+            if hip_y is None:
+                return
             self._calibration.append(hip_y)
             if len(self._calibration) >= self._calibration_need:
                 self._baseline = sum(self._calibration) / len(self._calibration)
@@ -41,7 +44,8 @@ class SquatDetector:
             return
 
         if self.state == self.STANDING:
-            if hip_y > self._squat_threshold:
+            # Squat triggered by: hips disappeared OR hips dropped below threshold
+            if hip_y is None or hip_y > self._squat_threshold:
                 self._hold_frames += 1
                 if self._hold_frames >= self.min_hold_frames:
                     self.state = self.DOWN
@@ -50,7 +54,8 @@ class SquatDetector:
                 self._hold_frames = 0
 
         elif self.state == self.DOWN:
-            if hip_y < self._stand_threshold:
+            # Stand triggered by: hips reappeared at normal level
+            if hip_y is not None and hip_y < self._stand_threshold:
                 if self._was_valid_down:
                     self.count += 1
                     self._was_valid_down = False
@@ -110,23 +115,28 @@ class SquatDetector:
             left_hip = lm[23]
             right_hip = lm[24]
 
-            person_visible = True
-            hip_y = (left_hip.y + right_hip.y) / 2
-            self.process(hip_y)
-
-            if self.state == self.CALIBRATING:
-                label = f"校准中... ({len(self._calibration)}/{self._calibration_need})"
-            elif self.is_complete():
-                label = f"太棒了！ {self.count}/{self.target}"
-            elif self.state == self.DOWN:
-                label = f"站起来！ ({self.count}/{self.target})"
+            if left_hip.visibility > 0.3 and right_hip.visibility > 0.3:
+                person_visible = True
+                hip_y = (left_hip.y + right_hip.y) / 2
+                self.process(hip_y)
+                for idx in [23, 24]:
+                    px = int(lm[idx].x * w)
+                    py = int(lm[idx].y * h)
+                    cv2.circle(frame, (px, py), 10, (0, 255, 0), -1)
             else:
-                label = f"蹲下去！ ({self.count}/{self.target})"
+                self.process(None)
 
-            for idx in [23, 24]:
-                px = int(lm[idx].x * w)
-                py = int(lm[idx].y * h)
-                cv2.circle(frame, (px, py), 10, (0, 255, 0), -1)
+        if not person_visible and self.state != self.CALIBRATING:
+            self.process(None)
+
+        if self.state == self.CALIBRATING:
+            label = f"校准中... ({len(self._calibration)}/{self._calibration_need})"
+        elif self.is_complete():
+            label = f"太棒了！ {self.count}/{self.target}"
+        elif self.state == self.DOWN:
+            label = f"站起来！ ({self.count}/{self.target})"
+        elif person_visible:
+            label = f"蹲下去！ ({self.count}/{self.target})"
 
         return frame, self.count, label, person_visible, hip_y
 
