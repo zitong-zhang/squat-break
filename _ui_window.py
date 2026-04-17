@@ -78,12 +78,27 @@ def _show_reminder(root, result, target_squats):
               command=lambda: _show_squat_phase(root, result, target_squats)).pack(pady=40)
 
 
+def _find_macbook_camera_index():
+    """Find the MacBook built-in camera index, not iPhone Continuity Camera."""
+    try:
+        from AVFoundation import AVCaptureDevice
+        devices = AVCaptureDevice.devicesWithMediaType_('vide')
+        for i, d in enumerate(devices):
+            name = d.localizedName()
+            if 'MacBook' in name or 'FaceTime' in name:
+                return i
+    except Exception:
+        pass
+    return 0
+
+
 def _show_squat_phase(root, result, target_squats):
     for widget in root.winfo_children():
         widget.destroy()
     root.configure(bg="#0f0f1a")
 
-    cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+    cam_idx = _find_macbook_camera_index()
+    cap = cv2.VideoCapture(cam_idx, cv2.CAP_AVFOUNDATION)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     if not cap.isOpened():

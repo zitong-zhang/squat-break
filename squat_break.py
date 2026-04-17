@@ -49,7 +49,17 @@ def main():
     # Check camera availability at startup
     try:
         import cv2
-        cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+        cam_idx = 0
+        try:
+            from AVFoundation import AVCaptureDevice
+            devices = AVCaptureDevice.devicesWithMediaType_('vide')
+            for i, d in enumerate(devices):
+                if 'MacBook' in d.localizedName() or 'FaceTime' in d.localizedName():
+                    cam_idx = i
+                    break
+        except Exception:
+            pass
+        cap = cv2.VideoCapture(cam_idx, cv2.CAP_AVFOUNDATION)
         if not cap.isOpened():
             print("警告：摄像头不可用，蹲起检测将无法工作。")
             print("请检查摄像头连接和权限设置。")
