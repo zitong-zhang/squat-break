@@ -13,7 +13,7 @@ from detector import SquatDetector
 
 
 def _activate_and_notify():
-    """Send notification and steal focus using osascript (no NSApplication conflict with Tk)."""
+    """Send notification and steal focus using osascript."""
     try:
         subprocess.run([
             'osascript', '-e',
@@ -21,6 +21,39 @@ def _activate_and_notify():
         ], timeout=3)
     except Exception:
         pass
+    try:
+        subprocess.run([
+            'osascript', '-e',
+            'tell application "System Events" to set frontmost of every process whose name contains "Python" to true'
+        ], timeout=3)
+    except Exception:
+        pass
+
+
+def _find_built_in_camera():
+    """Find the built-in camera. Returns (index, name)."""
+    try:
+        from AVFoundation import AVCaptureDevice, AVCaptureDeviceDiscoverySession
+        session = AVCaptureDeviceDiscoverySession.discoverySessionWithDeviceTypes_mediaType_position_(
+            ['AVCaptureDeviceTypeBuiltInWideAngleCamera'], 'vide', 0,
+        )
+        builtin = session.devices()
+        if builtin:
+            target_uid = builtin[0].uniqueID()
+            target_name = builtin[0].localizedName()
+            all_devices = AVCaptureDevice.devicesWithMediaType_('vide')
+            for i, d in enumerate(all_devices):
+                if d.uniqueID() == target_uid:
+                    return i, target_name
+        # Fallback: exclude iPhone/iPad by name
+        all_devices = AVCaptureDevice.devicesWithMediaType_('vide')
+        for i, d in enumerate(all_devices):
+            name = d.localizedName()
+            if 'iPhone' not in name and 'iPad' not in name:
+                return i, name
+    except Exception:
+        pass
+    return 0, "unknown"
 
 
 def main():
@@ -44,9 +77,10 @@ def main():
 
     _show_reminder(root, result, target_squats)
 
-    # Force foreground using osascript by PID - most reliable on macOS
     pid = os.getpid()
     def steal_focus():
+        if not root.winfo_exists():
+            return
         try:
             subprocess.run([
                 'osascript', '-e',
@@ -54,15 +88,21 @@ def main():
             ], timeout=3)
         except Exception:
             pass
-        if root.winfo_exists():
-            root.lift()
-            root.focus_force()
+        try:
+            subprocess.run([
+                'osascript', '-e',
+                'tell application "System Events" to set frontmost of every process whose name contains "Python" to true'
+            ], timeout=3)
+        except Exception:
+            pass
+        root.lift()
+        root.focus_force()
+        root.update_idletasks()
 
     root.update_idletasks()
     steal_focus()
-    root.after(500, steal_focus)
-    root.after(1500, steal_focus)
-    root.after(3000, steal_focus)
+    for ms in [300, 700, 1200, 2000, 3000, 5000]:
+        root.after(ms, steal_focus)
 
     root.mainloop()
 
@@ -97,26 +137,12 @@ def _show_reminder(root, result, target_squats):
               command=lambda: _show_squat_phase(root, result, target_squats)).pack(pady=40)
 
 
-def _find_macbook_camera_index():
-    """Find the MacBook built-in camera index, not iPhone Continuity Camera."""
-    try:
-        from AVFoundation import AVCaptureDevice
-        devices = AVCaptureDevice.devicesWithMediaType_('vide')
-        for i, d in enumerate(devices):
-            name = d.localizedName()
-            if 'MacBook' in name or 'FaceTime' in name:
-                return i
-    except Exception:
-        pass
-    return 0
-
-
 def _show_squat_phase(root, result, target_squats):
     for widget in root.winfo_children():
         widget.destroy()
     root.configure(bg="#0f0f1a")
 
-    cam_idx = _find_macbook_camera_index()
+    cam_idx, cam_name = _find_built_in_camera()
     cap = cv2.VideoCapture(cam_idx, cv2.CAP_AVFOUNDATION)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
