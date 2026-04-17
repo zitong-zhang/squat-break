@@ -46,6 +46,18 @@ def main():
     print(f"Squat Break 已启动！每 {args.interval} 分钟提醒你做蹲起。")
     print("屏幕活跃时计时，锁屏时暂停。按 Ctrl+C 退出。")
 
+    # Check camera availability at startup
+    try:
+        import cv2
+        cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+        if not cap.isOpened():
+            print("警告：摄像头不可用，蹲起检测将无法工作。")
+            print("请检查摄像头连接和权限设置。")
+        else:
+            cap.release()
+    except Exception as e:
+        print(f"警告：摄像头检查失败: {e}")
+
     try:
         while True:
             if is_screen_active():

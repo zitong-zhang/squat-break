@@ -98,8 +98,8 @@ def _show_squat_phase(root, result, target_squats):
 
     root.configure(bg="#0f0f1a")
 
-    # Open camera
-    cap = cv2.VideoCapture(0)
+    # Open camera with explicit AVFoundation backend (required on macOS)
+    cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
     if not cap.isOpened():
         error_frame = tk.Frame(root, bg="#0f0f1a")
         error_frame.place(relx=0.5, rely=0.5, anchor="center")
@@ -243,4 +243,4 @@ def _show_squat_phase(root, result, target_squats):
 
         root.after(30, update_frame)
 
-    root.after(100, update_frame)
+    root.after(1000, update_frame)
