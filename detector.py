@@ -54,14 +54,23 @@ class SquatDetector:
 
     def _get_pose(self):
         if self._pose is None:
+            import os
             import mediapipe as mp
+            from mediapipe.tasks import python as mp_python
+            from mediapipe.tasks.python import vision
 
-            self._pose = mp.solutions.pose.Pose(
-                static_image_mode=False,
-                model_complexity=0,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5,
+            model_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "models",
+                "pose_landmarker_lite.task",
             )
+            options = vision.PoseLandmarkerOptions(
+                base_options=mp_python.BaseOptions(model_asset_path=model_path),
+                running_mode=vision.RunningMode.IMAGE,
+                min_pose_detection_confidence=0.5,
+                min_pose_presence_confidence=0.5,
+            )
+            self._pose = vision.PoseLandmarker.create_from_options(options)
         return self._pose
 
     def process_frame(self, frame):
@@ -70,39 +79,38 @@ class SquatDetector:
         Returns (frame, count, label, person_visible).
         """
         import cv2
+        import numpy as np
+        import mediapipe as mp
 
-        pose = self._get_pose()
+        landmarker = self._get_pose()
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose.process(rgb)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        results = landmarker.detect(mp_image)
 
         h, w = frame.shape[:2]
         label = "请站到摄像头前"
         person_visible = False
 
-        if results.pose_landmarks:
-            lm = results.pose_landmarks.landmark
+        if results.pose_landmarks and len(results.pose_landmarks) > 0:
+            lm = results.pose_landmarks[0]
+            # MediaPipe Pose landmark indices:
+            # 23=left_hip, 24=right_hip, 25=left_knee, 26=right_knee
             left_hip = lm[23]
             right_hip = lm[24]
             left_knee = lm[25]
             right_knee = lm[26]
 
-            if (
-                left_hip.visibility > 0.5
-                and right_hip.visibility > 0.5
-                and left_knee.visibility > 0.5
-                and right_knee.visibility > 0.5
-            ):
-                person_visible = True
-                hip_y = (left_hip.y + right_hip.y) / 2
-                knee_y = (left_knee.y + right_knee.y) / 2
-                self.process(hip_y, knee_y)
+            person_visible = True
+            hip_y = (left_hip.y + right_hip.y) / 2
+            knee_y = (left_knee.y + right_knee.y) / 2
+            self.process(hip_y, knee_y)
 
-                if self.is_complete():
-                    label = f"太棒了！ {self.count}/{self.target}"
-                elif self.state == self.DOWN:
-                    label = f"站起来！ ({self.count}/{self.target})"
-                else:
-                    label = f"蹲下去！ ({self.count}/{self.target})"
+            if self.is_complete():
+                label = f"太棒了！ {self.count}/{self.target}"
+            elif self.state == self.DOWN:
+                label = f"站起来！ ({self.count}/{self.target})"
+            else:
+                label = f"蹲下去！ ({self.count}/{self.target})"
 
             for idx in [23, 24, 25, 26]:
                 px = int(lm[idx].x * w)
