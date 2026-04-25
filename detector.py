@@ -1,4 +1,6 @@
 """Squat Break - 久坐蹲起提醒工具 - 蹲起检测模块"""
+import cv2
+import mediapipe as mp
 
 
 class SquatDetector:
@@ -41,6 +43,7 @@ class SquatDetector:
                 self._squat_threshold = self._baseline * 1.15
                 self._stand_threshold = self._baseline * 1.08
                 self.state = self.STANDING
+                self._calibration = None
             return
 
         if self.state == self.STANDING:
@@ -74,7 +77,6 @@ class SquatDetector:
     def _get_pose(self):
         if self._pose is None:
             import os
-            import mediapipe as mp
             from mediapipe.tasks import python as mp_python
             from mediapipe.tasks.python import vision
 
@@ -93,20 +95,13 @@ class SquatDetector:
         return self._pose
 
     def process_frame(self, frame):
-        """Process a BGR OpenCV frame.
-
-        Returns (frame, count, label, person_visible, hip_y).
-        """
-        import cv2
-        import mediapipe as mp
-
+        """Process a BGR OpenCV frame. Returns RGB annotated frame with detection results."""
         landmarker = self._get_pose()
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         results = landmarker.detect(mp_image)
 
         h, w = frame.shape[:2]
-        label = "校准中..." if self.state == self.CALIBRATING else "请站到摄像头前"
         person_visible = False
         hip_y = self._last_hip_y
 
@@ -122,7 +117,7 @@ class SquatDetector:
                 for idx in [23, 24]:
                     px = int(lm[idx].x * w)
                     py = int(lm[idx].y * h)
-                    cv2.circle(frame, (px, py), 10, (0, 255, 0), -1)
+                    cv2.circle(rgb, (px, py), 10, (0, 255, 0), -1)
             else:
                 self.process(None)
 
@@ -137,8 +132,10 @@ class SquatDetector:
             label = f"站起来！ ({self.count}/{self.target})"
         elif person_visible:
             label = f"蹲下去！ ({self.count}/{self.target})"
+        else:
+            label = f"等待检测... ({self.count}/{self.target})"
 
-        return frame, self.count, label, person_visible, hip_y
+        return rgb, self.count, label, person_visible, hip_y
 
     def release(self):
         if self._pose is not None:

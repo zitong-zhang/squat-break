@@ -52,56 +52,59 @@ def fmt_duration(seconds):
 
 def main():
     interval = int(sys.argv[1]) if len(sys.argv) > 1 else 40
+    squat_count = int(sys.argv[2]) if len(sys.argv) > 2 else 5
     interval_seconds = interval * 60
     accumulated = 0.0
+    paused = False
     poll_interval = 5
     squat_sessions = 0
     start_time = time.time()
     active_seconds = 0.0
 
-    print(f"Hi! 每 {interval} 分钟提醒你做蹲起。", flush=True)
-    print("输入 end 结束。屏幕活跃时计时，锁屏时暂停。", flush=True)
+    print(f"Hi! 每 {interval} 分钟提醒你做 {squat_count} 个蹲起。", flush=True)
+    print("输入 end 结束，输入 time 查看时间，输入 pause 暂停，输入 resume 恢复。", flush=True)
 
-    # Check camera availability at startup
     try:
-        import cv2
-        cam_idx = 0
-        try:
-            from AVFoundation import AVCaptureDevice, AVCaptureDeviceDiscoverySession
-            session = AVCaptureDeviceDiscoverySession.discoverySessionWithDeviceTypes_mediaType_position_(
-                ['AVCaptureDeviceTypeBuiltInWideAngleCamera'], 'vide', 0,
-            )
-            builtin = session.devices()
-            if builtin:
-                target_uid = builtin[0].uniqueID()
-                all_devices = AVCaptureDevice.devicesWithMediaType_('vide')
-                for i, d in enumerate(all_devices):
-                    if d.uniqueID() == target_uid:
-                        cam_idx = i
-                        break
-        except Exception:
-            pass
-        cap = cv2.VideoCapture(cam_idx, cv2.CAP_AVFOUNDATION)
-        if not cap.isOpened():
-            print("警告：摄像头不可用，蹲起检测将无法工作。")
-            print("请检查摄像头连接和权限设置。")
-        else:
-            cap.release()
-    except Exception as e:
-        print(f"警告：摄像头检查失败: {e}")
+        from AVFoundation import AVCaptureDeviceDiscoverySession
+        session = AVCaptureDeviceDiscoverySession.discoverySessionWithDeviceTypes_mediaType_position_(
+            ['AVCaptureDeviceTypeBuiltInWideAngleCamera'], 'vide', 0,
+        )
+        if not session.devices():
+            print("警告：未检测到摄像头，蹲起检测将无法工作。")
+    except Exception:
+        pass
+
+    def check_stdin():
+        """Check stdin for commands. Returns True if should exit."""
+        if not select.select([sys.stdin], [], [], 0)[0]:
+            return False
+        line = sys.stdin.readline().strip().lower()
+        nonlocal paused
+        if line == "end":
+            return True
+        elif line == "time":
+            total_wall = time.time() - start_time
+            remaining = max(0, interval_seconds - accumulated)
+            print(f"已工作: {fmt_duration(total_wall)}（活跃 {fmt_duration(active_seconds)}），下次蹲起: {fmt_duration(remaining)}", flush=True)
+        elif line == "pause":
+            paused = True
+            print("计时已暂停。输入 resume 恢复。", flush=True)
+        elif line == "resume":
+            paused = False
+            print("计时已恢复。", flush=True)
+        return False
 
     try:
         while True:
-            if is_screen_active():
+            if not paused and is_screen_active():
                 accumulated += poll_interval
                 active_seconds += poll_interval
-                remaining = interval_seconds - accumulated
-                if remaining <= 0:
+                if accumulated >= interval_seconds:
                     print("\n时间到！起来做蹲起！")
                     global _ui_process
                     ui_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_ui_window.py")
                     _ui_process = subprocess.Popen(
-                        [sys.executable, ui_script, "10"],
+                        [sys.executable, ui_script, str(squat_count)],
                     )
                     _ui_process.wait()
                     _ui_process = None
@@ -109,13 +112,14 @@ def main():
                     accumulated = 0.0
                     print("计时器已重置，继续工作吧！")
 
-            # Check for "end" command on stdin
-            if select.select([sys.stdin], [], [], 0)[0]:
-                line = sys.stdin.readline().strip().lower()
-                if line == "end":
-                    break
+            if check_stdin():
+                break
 
-            time.sleep(poll_interval)
+            # Sleep in 1-second increments for responsive command input
+            for _ in range(poll_interval):
+                time.sleep(1)
+                if check_stdin():
+                    break
     except KeyboardInterrupt:
         pass
 
