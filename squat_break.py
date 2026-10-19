@@ -94,8 +94,23 @@ def main():
             print("计时已恢复。", flush=True)
         return False
 
+    def wait_ui(process):
+        """Wait for the squat UI while still accepting stdin commands.
+        Returns True if the user requested exit (UI is terminated)."""
+        while process.poll() is None:
+            if check_stdin():
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except Exception:
+                    process.kill()
+                return True
+            time.sleep(0.5)
+        return False
+
+    stop = False
     try:
-        while True:
+        while not stop:
             if not paused and is_screen_active():
                 accumulated += poll_interval
                 active_seconds += poll_interval
@@ -106,8 +121,11 @@ def main():
                     _ui_process = subprocess.Popen(
                         [sys.executable, ui_script, str(squat_count)],
                     )
-                    _ui_process.wait()
+                    if wait_ui(_ui_process):
+                        stop = True
                     _ui_process = None
+                    if stop:
+                        break
                     squat_sessions += 1
                     accumulated = 0.0
                     print("计时器已重置，继续工作吧！")
@@ -119,6 +137,7 @@ def main():
             for _ in range(poll_interval):
                 time.sleep(1)
                 if check_stdin():
+                    stop = True
                     break
     except KeyboardInterrupt:
         pass
